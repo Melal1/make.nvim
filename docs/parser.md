@@ -188,13 +188,13 @@ Inputs:
 - `CheckStart` (boolean): Whether to search for start marker.
 - `CheckEnd` (boolean): Whether to search for end marker.
 Returns:
-- `MarkerInfo`: `{ M_start, M_end, type }`.
+- `MarkerInfo`: `{ M_start, M_end, type, name }`.
 Side effects/notes:
-- Reads line by line and extracts optional `type:` annotation.
+- Reads line by line and extracts optional `type:` and `name:` annotations.
 Detailed explanation:
 - Normalize `Content` into a list of lines so line indices match Makefile line numbers.
 - Scan only comment lines to find `# marker_start: <path>` for the requested `RelativePath`.
-- When a start marker is found, capture its line number and optional `type:` annotation.
+- When a start marker is found, capture its line number and optional `type:`/`name:` annotations.
 - If `CheckEnd` is enabled, continue scanning until `# marker_end: <path>` is found.
 - Return the gathered start/end line numbers (or `-1` for disabled checks).
 Example:
@@ -207,10 +207,10 @@ Purpose: Find all `marker_start`/`marker_end` pairs in the Makefile.
 Inputs:
 - `Content` (string|string[]|nil): Makefile content (string or pre-split lines).
 Returns:
-- `MarkerPair[]`: Array of `{ path, StartLine, EndLine, annotatedType }`.
+- `MarkerPair[]`: Array of `{ path, StartLine, EndLine, annotatedType, name }`.
 Detailed explanation:
 - Normalize `Content` into lines and iterate once from top to bottom.
-- When a `marker_start` is found, record its line and optional `type:` in a map keyed by path.
+- When a `marker_start` is found, record its line and optional `type:`/`name:` in a map keyed by path.
 - When a `marker_end` is found, look up the matching start and emit a pair.
 - Remove matched starts to keep the map small and avoid duplicate pairs.
 Example:
@@ -277,11 +277,12 @@ Example:
 local deps = Parser.ParseDependencies("app: main.o utils.o")
 ```
 
-## Parser.FindExecutableTargetName(sectionContent, baseName)
+## Parser.FindExecutableTargetName(sectionContent, baseName, targetKey)
 Purpose: Find the best executable target name in a section.
 Inputs:
 - `sectionContent` (string): Section content.
-- `baseName` (string|nil): Base name hint for matching.
+- `baseName` (string|nil): Base name hint (legacy).
+- `targetKey` (string|nil): Target key used to match exe names (flattened or custom).
 Returns:
 - `string|nil`: Target name or `nil` if not found.
 Side effects/notes:
@@ -290,11 +291,10 @@ Detailed explanation:
 - Walk each non-empty, non-comment line in the section.
 - Ignore `LINKS` assignment lines to avoid confusing target detection.
 - Extract the target name before the colon.
-- Prefer a target that matches `baseName` (or its BUILD_DIR/BUILD_MODE forms).
-- Fall back to the first non-`.o`/`run` target if no exact match is found.
+- Prefer a target that matches `targetKey` via the `$(BUILD_OUT)` target form.
 Example:
 ```lua
-local name = Parser.FindExecutableTargetName(section, "main")
+local name = Parser.FindExecutableTargetName(section, "main", "src__main")
 ```
 
 ## Parser.GetLinksForTarget(sectionContent, targetName)
@@ -326,25 +326,27 @@ Example:
 local info = Parser.ParseTarget(section, "main")
 ```
 
-## Parser.DetectTargetTypes(sectionContent, baseName, annotatedType)
+## Parser.DetectTargetTypes(sectionContent, baseName, annotatedType, targetKey)
 Purpose: Detect whether a section contains obj, executable, and run targets.
 Inputs:
 - `sectionContent` (string): Section content.
 - `baseName` (string|nil): Base name hint.
 - `annotatedType` (string|nil): Expected type annotation.
+- `targetKey` (string|nil): Target key used for matching exe/run targets.
 Returns:
 - `boolean hasObj`, `boolean hasExecutable`, `boolean hasRun`.
 Example:
 ```lua
-local hasObj, hasExe, hasRun = Parser.DetectTargetTypes(section, "main")
+local hasObj, hasExe, hasRun = Parser.DetectTargetTypes(section, "main", nil, "src__main")
 ```
 
-## Parser.AnalyzeSection(sectionContent, baseName, annotatedType)
+## Parser.AnalyzeSection(sectionContent, baseName, annotatedType, targetKey)
 Purpose: Analyze a single section and validate expected target types.
 Inputs:
 - `sectionContent` (string): Section content.
 - `baseName` (string|nil): Base name hint.
 - `annotatedType` (string|nil): Marker annotation type.
+- `targetKey` (string|nil): Target key used for exe/run detection.
 Returns:
 - `SectionAnalysis`: Detailed target and type info.
 Side effects/notes:
@@ -358,7 +360,7 @@ Detailed explanation:
 - If `annotatedType` is present, validate required targets and set `valid`/`error`.
 Example:
 ```lua
-local analysis = Parser.AnalyzeSection(section, "main", "full")
+local analysis = Parser.AnalyzeSection(section, "main", "full", "src__main")
 ```
 
 ## Parser.AnalyzeAllSections(Content, opts)
@@ -404,7 +406,7 @@ Side effects/notes:
 Detailed explanation:
 - Analyze all sections (uses cache when available).
 - For each section, slice its content and derive the executable target + links.
-- Print a structured summary: path, type, target list, dependencies, recipes, and links.
+- Print a structured summary: path, type, executable name (default/override), target list, dependencies, recipes, and links.
 Example:
 ```lua
 Parser.PrintAnalysisSummary(content)

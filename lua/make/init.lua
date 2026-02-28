@@ -4,6 +4,7 @@ local M = {}
 
 local Config = require("make.modules.config")
 local Utils = require("make.shared.utils")
+local uv = vim.uv or vim.loop
 local Parser = require("make.modules.parser")
 local Generator = require("make.modules.generator")
 local RootFinder = require("make.shared.finder")
@@ -86,7 +87,7 @@ function M.Remove(MakefilePath, Content)
 end
 
 function M.PickAndAdd(RootPath, Content)
-	return Actions.PickAndAdd(RootPath, Content)
+	return Actions.PickAndAdd(RootPath, Content, M.Config)
 end
 
 function M.BuildTarget(MakefilePath, RelativePath, Content)
@@ -126,7 +127,7 @@ function M.Make(Fargs)
 	local MakefilePath = Root.Path .. "/Makefile"
 	Parser.SetCacheRoot(Root.Path, MakefilePath)
 
-	local Stat = vim.loop.fs_stat(MakefilePath)
+	local Stat = uv.fs_stat(MakefilePath)
 	if not Stat then
 		-- This will only get triggered if there is another root marker other than Makefile and Makefile don't exist
 		local ans = vim.fn.input("Makefile not found. Create it? (y/n): ")
@@ -148,7 +149,7 @@ function M.Make(Fargs)
 	end
 
 	if arg == "open" then
-		if vim.loop.fs_stat(MakefilePath) then
+		if uv.fs_stat(MakefilePath) then
 			vim.cmd("edit " .. vim.fn.fnameescape(MakefilePath))
 			Utils.Notify("Opened Makefile", vim.log.levels.INFO)
 			return true
@@ -201,6 +202,8 @@ function M.Make(Fargs)
 		return M.PickAndRunTargets(MakefileContent)
 	elseif arg == "edit_all" then
 		return M.EditAllTargets(MakefilePath, Root.Path, MakefileContent)
+	elseif arg == "pick-add" or arg == "pick_add" then
+		return M.PickAndAdd(Root.Path, MakefileContent)
 	elseif arg == "remove" then
 		return M.Remove(MakefilePath, MakefileContent)
 	elseif arg == "analysis" then

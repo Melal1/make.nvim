@@ -6,6 +6,34 @@ local Generator = require("make.modules.generator")
 local Links = require("make.modules.links")
 local Helpers = require("make.modules.helpers")
 local Targets = require("make.modules.targets")
+local uv = vim.uv or vim.loop
+
+local function strip_ansi(text)
+	if not text or text == "" then
+		return text or ""
+	end
+	-- Strip ANSI escape sequences (colors, cursor controls)
+	return text:gsub("\27%[[%d;]*[%a]", "")
+end
+
+local function set_quickfix_from_output(output, title)
+	if not output or output == "" then
+		return false
+	end
+	local raw_lines = vim.split(output, "\n", { plain = true, trimempty = true })
+	local lines = {}
+	for _, line in ipairs(raw_lines) do
+		local cleaned = strip_ansi(line):gsub("\r$", "")
+		if cleaned ~= "" then
+			table.insert(lines, cleaned)
+		end
+	end
+	if #lines == 0 then
+		return false
+	end
+	vim.fn.setqflist({}, " ", { title = title or "Make Build", lines = lines })
+	return true
+end
 
 ---@param MakefilePath string
 ---@param RelativePath string
@@ -19,31 +47,20 @@ function M.BuildTarget(MakefilePath, RelativePath, Content)
 	end
 
 	local Entry = Helpers.FindSectionByPath(TargetsTable, RelativePath)
-	if not Entry or not Entry.analysis.targets[2] then
+	local exe_target = Targets.GetExecutableTarget(Entry)
+	if not Entry or not exe_target then
 		Utils.Notify("No matching target found", vim.log.levels.WARN)
 		return false
 	end
-	local BinName = vim.fn.fnamemodify(Entry.analysis.targets[2].name, ":t")
+	local BinName = vim.fn.fnamemodify(exe_target.name, ":t")
 
 	local dir = vim.fn.fnamemodify(MakefilePath, ":h")
 	local MakefileVars = Parser.ParseVariables(Content)
-	local base_dir = MakefileVars.BUILD_DIR or "build"
-	local build_mode = MakefileVars.BUILD_MODE or "debug"
-	local build_out = Utils.GetBuildOutputDir(MakefileVars)
-	local target_name = Entry.analysis.targets[2].name
-	local resolved = target_name
-	if resolved:find("%$%(BUILD_MODE%)") then
-		resolved = resolved:gsub("%$%(BUILD_DIR%)/%$%(BUILD_MODE%)", build_out)
-		resolved = resolved:gsub("%$%(BUILD_MODE%)", build_mode)
-		resolved = resolved:gsub("%$%(BUILD_DIR%)", base_dir)
-	else
-		resolved = resolved:gsub("%$%(BUILD_DIR%)", base_dir)
-	end
+	local target_name = exe_target.name
+	local resolved = Utils.ResolveTargetName(target_name, MakefileVars)
 	resolved = resolved:gsub("^%./", "")
 
-	local cmd = string.format("cd %s && make %s", dir, resolved)
-
-	vim.system({ "sh", "-c", cmd }, { text = true }, function(obj)
+	vim.system({ "make", resolved }, { text = true, cwd = dir }, function(obj)
 		vim.defer_fn(function()
 			vim.schedule(function()
 				if obj.code == 0 then
@@ -53,8 +70,13 @@ function M.BuildTarget(MakefilePath, RelativePath, Content)
 					return
 				end
 
+				local err_output = obj.stderr or ""
+				if err_output == "" then
+					err_output = obj.stdout or ""
+				end
+
 				local err_path = string.format("/tmp/%s.err", BinName)
-				if Utils.WriteFile(err_path, obj.stderr, false) then
+				if Utils.WriteFile(err_path, err_output, false) then
 					Utils.Notify(
 						string.format("Build failed. Error saved to: %s", err_path),
 						vim.log.levels.HINT,
@@ -62,6 +84,12 @@ function M.BuildTarget(MakefilePath, RelativePath, Content)
 					)
 				else
 					Utils.Notify("Build failed (could not write error file).", vim.log.levels.ERROR, {
+						title = "Make Build",
+					})
+				end
+
+				if set_quickfix_from_output(err_output, "Make Build: " .. BinName) then
+					Utils.Notify("Quickfix list updated. Run :copen to view.", vim.log.levels.INFO, {
 						title = "Make Build",
 					})
 				end
@@ -94,11 +122,60 @@ function M.RunTargetInSpilt(MakefilePath, RelativePath, Content)
 		Utils.Notify("No matching run target for " .. RelativePath, vim.log.levels.WARN)
 		return false
 	end
-	local RunTargetName = "run" .. Entry.baseName
+	local RunTargetName = nil
+	if Entry.analysis and Entry.analysis.targets then
+		for _, target in ipairs(Entry.analysis.targets) do
+			if target.name and Parser.TargetKind(target.name, Entry.targetKey, { allow_run_prefix = true }) == "run" then
+				RunTargetName = target.name
+				break
+			end
+		end
+	end
+	if not RunTargetName then
+		local suffix = Entry.targetKey or Entry.baseName or ""
+		RunTargetName = "run_" .. suffix
+	end
 
 	local MakefileDir = vim.fn.fnamemodify(MakefilePath, ":h")
-	local cmd = "cd " .. vim.fn.shellescape(MakefileDir) .. " && make " .. RunTargetName
-	term.SingleShot(cmd)
+	local stdout_lines = {}
+	local stderr_lines = {}
+
+	local function collect_lines(bucket, data)
+		if not data then
+			return
+		end
+		for _, line in ipairs(data) do
+			if line ~= "" then
+				table.insert(bucket, line)
+			end
+		end
+	end
+
+	term.SingleShotJob({ "make", RunTargetName }, {
+		cwd = MakefileDir,
+		on_stdout = function(_, data)
+			collect_lines(stdout_lines, data)
+		end,
+		on_stderr = function(_, data)
+			collect_lines(stderr_lines, data)
+		end,
+		on_exit = function(_, code)
+			if code == 0 then
+				return
+			end
+			local err_output = ""
+			if #stderr_lines > 0 then
+				err_output = table.concat(stderr_lines, "\n")
+			elseif #stdout_lines > 0 then
+				err_output = table.concat(stdout_lines, "\n")
+			end
+			if set_quickfix_from_output(err_output, "Make Run: " .. RunTargetName) then
+				Utils.Notify("Quickfix list updated. Run :copen to view.", vim.log.levels.INFO, {
+					title = "Make Run",
+				})
+			end
+		end,
+	})
 
 	return true
 end
@@ -111,6 +188,8 @@ function M.PickAndRunTargets(makefile_content)
 		Utils.Notify("No targets found in Makefile", vim.log.levels.WARN)
 		return false
 	end
+
+	local vars = Parser.ParseVariables(makefile_content or "")
 
 	local picker = Helpers.GetPickerOrWarn("Picker is required for selection.")
 	if not picker then
@@ -138,14 +217,16 @@ function M.PickAndRunTargets(makefile_content)
 		for _, label in ipairs(selected_labels) do
 			local target_name = name_by_label[label]
 			if target_name then
-				table.insert(selected_targets, target_name)
+				table.insert(selected_targets, Utils.ResolveTargetName(target_name, vars))
 			end
 		end
 
 		local makefile_dir = vim.fn.getcwd()
-		local cmd = "cd " .. vim.fn.shellescape(makefile_dir) .. " && make " .. table.concat(selected_targets, " ")
-
-		vim.cmd("terminal " .. cmd)
+		local args = { "make" }
+		vim.list_extend(args, selected_targets)
+		local buf = vim.api.nvim_create_buf(false, true)
+		vim.api.nvim_set_current_buf(buf)
+		vim.fn.termopen(args, { cwd = makefile_dir })
 		Utils.Notify("Running targets: " .. table.concat(selected_targets, ", "), vim.log.levels.INFO)
 	end, {
 		prompt_title = "Select Makefile target(s)",
@@ -168,7 +249,7 @@ function M.FastRun(Config, on_run)
 	end
 
 	local makefile_content = nil
-	if vim.loop.fs_stat(makefile_path) then
+	if uv.fs_stat(makefile_path) then
 		makefile_content, _ = Utils.ReadFile(makefile_path)
 		if makefile_content and makefile_content ~= "" and Parser.TargetExists(makefile_content, relative_path) then
 			if on_run then

@@ -7,7 +7,7 @@ Inputs:
 Returns:
 - `string[]`: Lines to prepend to a Makefile.
 Side effects/notes:
-- Adds `$(shell mkdir -p $(BUILD_DIR)/$(BUILD_MODE))` to auto-create build dirs.
+- Adds `$(shell mkdir -p $(BUILD_OUT))` to auto-create build dirs.
 Example:
 ```lua
 local lines = Generator.GenerateMakefileVariables(cfg.MakefileVars)
@@ -28,7 +28,7 @@ Example:
 local lines = Generator.ObjectTarget("main", "./src/main.cpp", cfg.MakefileVars)
 ```
 
-## Generator.ExecutableTarget(Basename, RelativePath, Dependencies, MakefileVars, RootPath, Links)
+## Generator.ExecutableTarget(Basename, RelativePath, Dependencies, MakefileVars, RootPath, Links, TargetName)
 Purpose: Generate object, executable, and run targets for a source file.
 Inputs:
 - `Basename` (string): Base name without extension.
@@ -37,14 +37,16 @@ Inputs:
 - `MakefileVars` (table): Makefile variable values.
 - `RootPath` (string): Project root, used to resolve include paths.
 - `Links` (string[]|nil): Linker flags (optional).
+- `TargetName` (string|nil): Optional executable name override (no path separators).
 Returns:
 - `string[]|string[]`: On success, lines to append; on failure, list of missing includes.
 - `boolean`: `true` on success, `false` if includes are missing.
 Side effects/notes:
 - Resolves header include paths and generates `-I` flags.
 - Adds optional `LINKS` assignment if provided.
+- Adds an optional `name:` annotation in the marker when a custom name is provided.
 Detailed explanation:
-- Build object/executable target names under `$(BUILD_DIR)/$(BUILD_MODE)`.
+- Build object/executable target names under `$(BUILD_OUT)`.
 - Choose `CC`/`CFLAGS` vs `CXX`/`CXXFLAGS` based on provided vars.
 - For each dependency, locate its header directory and collect unique `-I` flags.
 - If any headers are missing, return the missing list and `false`.
@@ -57,7 +59,8 @@ local lines, ok = Generator.ExecutableTarget(
   { "./include/utils.h" },
   cfg.MakefileVars,
   "/p/app",
-  { "-lm" }
+  { "-lm" },
+  "app"
 )
 ```
 

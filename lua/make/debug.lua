@@ -3,8 +3,9 @@ local M = {}
 local Utils = require("make.shared.utils")
 local Finder = require("make.shared.finder")
 local Parser = require("make.modules.parser")
+local uv = vim.uv or vim.loop
 
-local function resolve_build_dir(root_path, makefile_path, vars)
+local function resolve_build_dir(root_path, vars)
 	local build_out = Utils.GetBuildOutputDir(vars or {})
 	if not build_out or build_out == "" then
 		build_out = "build"
@@ -44,8 +45,8 @@ local function find_executables(file_path, config)
 		return nil
 	end
 
-	local build_dir = resolve_build_dir(root.Path, makefile_path, vars)
-	local scandir = vim.loop.fs_scandir(build_dir)
+	local build_dir = resolve_build_dir(root.Path, vars)
+	local scandir = uv.fs_scandir(build_dir)
 	if not scandir then
 		Utils.Notify("Could not open build directory: " .. build_dir, vim.log.levels.ERROR)
 		return nil
@@ -53,7 +54,7 @@ local function find_executables(file_path, config)
 
 	local exe_files = {}
 	while true do
-		local name, entry_type = vim.loop.fs_scandir_next(scandir)
+		local name, entry_type = uv.fs_scandir_next(scandir)
 		if not name then
 			break
 		end
@@ -72,25 +73,21 @@ local function find_executables(file_path, config)
 end
 
 function M.RunDebug(filetype, executable_path)
+	local function run_gdbserver()
+		local args = { "gdbserver", "--no-startup-with-shell", ":1234", executable_path }
+		if os.getenv("TMUX") then
+			local cmd = { "tmux", "split-window", "-h", "-l", "30" }
+			vim.list_extend(cmd, args)
+			vim.system(cmd, { detach = true })
+		else
+			local term = require("make.terminal")
+			term.SingleShotJob(args)
+		end
+	end
+
 	local db = {
-		c = function()
-			local cmd = string.format('gdbserver --no-startup-with-shell :1234 "%s"', executable_path)
-			if os.getenv("TMUX") then
-				vim.fn.system("tmux split-window -h -l 30 " .. cmd)
-			else
-				local term = require("make.terminal")
-				term.SingleShot(cmd)
-			end
-		end,
-		cpp = function()
-			local cmd = string.format('gdbserver --no-startup-with-shell :1234 "%s"', executable_path)
-			if os.getenv("TMUX") then
-				vim.fn.system("tmux split-window -h -l 30 " .. cmd)
-			else
-				local term = require("make.terminal")
-				term.SingleShot(cmd)
-			end
-		end,
+		c = run_gdbserver,
+		cpp = run_gdbserver,
 	}
 
 	if db[filetype] then
@@ -121,7 +118,7 @@ function M.Debug(make_build_first, config)
 	end
 
 	local file_path = vim.fn.expand("%:p")
-	local files, root, build_dir = find_executables(file_path, config)
+	local files, _, build_dir = find_executables(file_path, config)
 	if not files then
 		Utils.Notify("No executable files found.", vim.log.levels.WARN)
 		return dap.ABORT

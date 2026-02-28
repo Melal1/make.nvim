@@ -108,6 +108,8 @@ Inputs:
 - `Content` (string)
 Returns:
 - `boolean`: `true` if picker opens.
+Side effects/notes:
+- Used by `:Make pick-add` to add multiple targets in one flow.
 Example:
 ```lua
 M.PickAndAdd(root, content)
@@ -127,7 +129,7 @@ M.BuildTarget(path, "./src/main.cpp", content)
 ```
 
 ## M.RunTargetInSpilt(MakefilePath, RelativePath, Content)
-Purpose: Run the `run<name>` target in a split terminal.
+Purpose: Run the `run_<name>` target in a split terminal.
 Inputs:
 - `MakefilePath` (string)
 - `RelativePath` (string)

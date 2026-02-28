@@ -11,12 +11,16 @@ local Generator = {}
 ---@return string[]
 function Generator.GenerateMakefileVariables(MakefileVars)
 	local Lines = {}
+	local Vars = vim.tbl_deep_extend("force", {}, MakefileVars or {})
+	if not Vars.BUILD_OUT or Vars.BUILD_OUT == "" then
+		Vars.BUILD_OUT = "$(BUILD_DIR)/$(BUILD_MODE)"
+	end
 
-	for VarName, VarValue in pairs(MakefileVars) do
+	for VarName, VarValue in pairs(Vars) do
 		table.insert(Lines, VarName .. " = " .. VarValue)
 	end
 
-	table.insert(Lines, "$(shell mkdir -p $(BUILD_DIR)/$(BUILD_MODE))")
+	table.insert(Lines, "$(shell mkdir -p $(BUILD_OUT))")
 	table.insert(Lines, "")
 
 	return Lines
@@ -28,7 +32,8 @@ end
 ---@param MakefileVars MakefileVars Makefile variables table
 ---@return string[]
 function Generator.ObjectTarget(Basename, RelativePath, MakefileVars)
-	local ObjName = "$(BUILD_DIR)/$(BUILD_MODE)/" .. Basename .. ".o"
+	local flat_name = Utils.FlattenRelativePath(RelativePath)
+	local ObjName = "$(BUILD_OUT)/" .. flat_name .. ".o"
 	local CompilerVar = MakefileVars.CC and "$(CC)" or "$(CXX)"
 	local FlagsVar = MakefileVars.CFLAGS and "$(CFLAGS)" or "$(CXXFLAGS)"
 
@@ -48,13 +53,20 @@ end
 ---@param MakefileVars MakefileVars       Makefile variables table
 ---@param RootPath string                 Root search path for includes
 ---@param Links string[]|nil              Optional list of linker flags
+---@param TargetName string|nil           Optional executable name override (no path separators)
 ---@return string[] lines_or_missing
 ---@return boolean success                Whether generation succeeded
-function Generator.ExecutableTarget(Basename, RelativePath, Dependencies, MakefileVars, RootPath, Links)
+function Generator.ExecutableTarget(Basename, RelativePath, Dependencies, MakefileVars, RootPath, Links, TargetName)
 	Dependencies = Dependencies or {}
 	Links = Links or {}
-	local ObjName = "$(BUILD_DIR)/$(BUILD_MODE)/" .. Basename .. ".o"
-	local ExeName = "$(BUILD_DIR)/$(BUILD_MODE)/" .. Basename
+	local flat_name = Utils.FlattenRelativePath(RelativePath)
+	local target_key = Utils.SanitizeTargetName(TargetName)
+	if target_key == "" then
+		target_key = flat_name
+	end
+	local ObjName = "$(BUILD_OUT)/" .. flat_name .. ".o"
+	local ExeName = "$(BUILD_OUT)/" .. target_key
+	local RunName = "run_" .. target_key
 	local CompilerVar = MakefileVars.CC and "$(CC)" or "$(CXX)"
 	local FlagsVar = MakefileVars.CFLAGS and "$(CFLAGS)" or "$(CXXFLAGS)"
 
@@ -75,13 +87,15 @@ function Generator.ExecutableTarget(Basename, RelativePath, Dependencies, Makefi
 
 	for _, Dep in ipairs(Dependencies) do
 		table.insert(LinkDeps, Dep)
-		local IncludePath = Finder.FindHeaderDirectory(vim.fn.fnamemodify(Dep, ":t:r"), RootPath)
-		if IncludePath then
-			if not InTable(Include, "-I" .. IncludePath) then
-				table.insert(Include, "-I" .. IncludePath)
+		if not Dep:match("%.o%s*$") then
+			local IncludePath = Finder.FindHeaderDirectory(vim.fn.fnamemodify(Dep, ":t:r"), RootPath)
+			if IncludePath then
+				if not InTable(Include, "-I" .. IncludePath) then
+					table.insert(Include, "-I" .. IncludePath)
+				end
+			else
+				table.insert(UnFoundIncludePath, Dep)
 			end
-		else
-			table.insert(UnFoundIncludePath, Dep)
 		end
 	end
 
@@ -94,13 +108,14 @@ function Generator.ExecutableTarget(Basename, RelativePath, Dependencies, Makefi
 	local LinkDepsStr = table.concat(LinkDeps, " ")
 	local LinksStr = table.concat(Links, " ")
 
-	local lines = {
-		"",
-		"# marker_start: " .. RelativePath .. " type:full",
-		ObjName .. ": " .. RelativePath,
-		"\t" .. CompilerVar .. " " .. FlagsVar .. " " .. IncludeStr .. " -c $< -o $@",
-		"",
-	}
+	local marker_line = "# marker_start: " .. RelativePath .. " type:full"
+	if target_key ~= flat_name then
+		marker_line = marker_line .. " name:" .. target_key
+	end
+
+	local lines = { "", marker_line, ObjName .. ": " .. RelativePath }
+	table.insert(lines, "\t" .. CompilerVar .. " " .. FlagsVar .. " " .. IncludeStr .. " -c $< -o $@")
+	table.insert(lines, "")
 
 	if LinksStr ~= "" then
 		table.insert(lines, ExeName .. ": LINKS += " .. LinksStr)
@@ -109,7 +124,7 @@ function Generator.ExecutableTarget(Basename, RelativePath, Dependencies, Makefi
 	table.insert(lines, ExeName .. ": " .. ObjName .. (LinkDepsStr ~= "" and " " .. LinkDepsStr or ""))
 	table.insert(lines, "\t" .. CompilerVar .. " $^ -o $@ $(LINKS)")
 	table.insert(lines, "")
-	table.insert(lines, "run" .. Basename .. ": " .. ExeName)
+	table.insert(lines, RunName .. ": " .. ExeName)
 	table.insert(lines, "\t" .. ExeName)
 	table.insert(lines, "# marker_end: " .. RelativePath)
 
@@ -123,11 +138,15 @@ end
 ---@param MakefileVars MakefileVars
 ---@return boolean|nil success
 function Generator.EnsureMakefileVariables(MakefilePath, Content, MakefileVars)
-	if Parser.HasReqVars(Content, MakefileVars) then
+	local Vars = vim.tbl_deep_extend("force", {}, MakefileVars or {})
+	if not Vars.BUILD_OUT or Vars.BUILD_OUT == "" then
+		Vars.BUILD_OUT = "$(BUILD_DIR)/$(BUILD_MODE)"
+	end
+	if Parser.HasReqVars(Content, Vars) then
 		return true
 	end
 
-	local VarLines = Generator.GenerateMakefileVariables(MakefileVars)
+	local VarLines = Generator.GenerateMakefileVariables(Vars)
 	local NewContent = table.concat(VarLines, "\n") .. (Content or "")
 
 	local Success, WriteErr = Utils.WriteFile(MakefilePath, NewContent)

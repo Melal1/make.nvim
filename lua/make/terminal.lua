@@ -85,4 +85,36 @@ function M.SingleShot(cmd, height)
 	vim.cmd("terminal " .. cmd)
 end
 
+---@param cmd string[]|string
+---@param opts table|nil
+function M.SingleShotJob(cmd, opts)
+	opts = opts or {}
+	local height = opts.height or 30
+	if height < 1 or height > 100 then
+		height = 30
+	end
+	height = math.floor(vim.o.lines * (height / 100))
+	vim.cmd("belowright " .. height .. "split")
+	if vim.api.nvim_win_is_valid(state.split.win) then
+		vim.api.nvim_win_hide(state.split.win)
+	end
+	if vim.api.nvim_win_is_valid(state.split.temp) then
+		vim.api.nvim_win_close(state.split.temp, true)
+	end
+	state.split.temp = vim.api.nvim_get_current_win()
+	local buf = vim.api.nvim_create_buf(false, true)
+	vim.api.nvim_win_set_buf(state.split.temp, buf)
+	local term_opts = { cwd = opts.cwd }
+	if opts.on_stdout then
+		term_opts.on_stdout = opts.on_stdout
+	end
+	if opts.on_stderr then
+		term_opts.on_stderr = opts.on_stderr
+	end
+	if opts.on_exit then
+		term_opts.on_exit = opts.on_exit
+	end
+	vim.fn.termopen(cmd, term_opts)
+end
+
 return M

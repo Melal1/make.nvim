@@ -36,15 +36,37 @@ Inputs:
 Returns:
 - `string|nil`: Directory containing the header, relative to root when possible.
 Side effects/notes:
-- Uses a `find` shell command; can be slow on large trees.
-- Returns only the first match.
+- Uses a cached header index built per project root for faster lookups.
+- Index is built once using `vim.fs.find` and reused across queries.
+- Returns only the first match in the index for a given basename.
 Detailed explanation:
-- Construct the header filename (`<Basename>.h`) and run `find` from `RootPath`.
-- If no results are returned, report `nil`.
-- Take the first match, compute its directory, and try to make it relative to `RootPath`.
-- Fall back to the absolute directory if a relative path cannot be built.
+- Build or reuse a cached index of `<Basename> -> directory` for the project root.
+- If no entry exists for `Basename`, return `nil`.
+- Prefer a root-relative directory when possible; fall back to absolute.
 Example:
 ```lua
 local dir = Finder.FindHeaderDirectory("utils", "/p/app")
 -- Possible result: "./include" or "/p/app/include"
+```
+
+## Finder.BuildHeaderIndex(RootPath)
+Purpose: Build or return the cached header index for a project root.
+Inputs:
+- `RootPath` (string): Root directory to index.
+Returns:
+- `table<string,string>`: Map of header basenames to directories.
+Side effects/notes:
+- Uses `vim.fs.find` to scan for `*.h` once per root.
+Example:
+```lua
+local index = Finder.BuildHeaderIndex("/p/app")
+```
+
+## Finder.ClearHeaderIndex(RootPath)
+Purpose: Clear cached header index entries.
+Inputs:
+- `RootPath` (string|nil): Root to clear, or `nil` to clear all.
+Example:
+```lua
+Finder.ClearHeaderIndex("/p/app")
 ```

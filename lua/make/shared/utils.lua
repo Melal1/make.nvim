@@ -142,6 +142,10 @@ function Utils.GetBuildOutputDir(Vars)
 	if not Vars then
 		return "build"
 	end
+	local build_out = Vars.BUILD_OUT
+	if build_out and build_out ~= "" and not build_out:find("%$%(") then
+		return build_out
+	end
 	local build_dir = Vars.BUILD_DIR or "build"
 	local build_mode = Vars.BUILD_MODE or ""
 	if build_mode ~= "" then
@@ -151,6 +155,66 @@ function Utils.GetBuildOutputDir(Vars)
 		return build_dir .. "/" .. build_mode
 	end
 	return build_dir
+end
+
+---Normalize a relative path by stripping a leading "./".
+---@param path string
+---@return string
+function Utils.NormalizeRelativePath(path)
+	path = path or ""
+	return path:gsub("^%./", "")
+end
+
+---Return a relative path without its extension, without a leading "./".
+---@param path string
+---@return string
+function Utils.RelativePathNoExt(path)
+	local normalized = Utils.NormalizeRelativePath(path)
+	if normalized == "" then
+		return normalized
+	end
+	return vim.fn.fnamemodify(normalized, ":r")
+end
+
+---Flatten a relative path into a single name segment (no directory separators).
+---@param path string
+---@return string
+function Utils.FlattenRelativePath(path)
+	local rel_no_ext = Utils.RelativePathNoExt(path)
+	if rel_no_ext == "" then
+		return rel_no_ext
+	end
+	return rel_no_ext:gsub("[/\\\\]", "__")
+end
+
+---Sanitize a target name by removing whitespace and path separators.
+---@param name string
+---@return string
+function Utils.SanitizeTargetName(name)
+	name = vim.trim(name or "")
+	if name == "" then
+		return ""
+	end
+	name = name:gsub("%s+", "_")
+	name = name:gsub("[/\\\\]", "__")
+	return name
+end
+
+---Resolve a target name by substituting BUILD_DIR / BUILD_MODE placeholders.
+---@param target string|nil
+---@param vars table|nil
+---@return string|nil
+function Utils.ResolveTargetName(target, vars)
+	if not target then
+		return target
+	end
+	vars = vars or {}
+	local build_out = Utils.GetBuildOutputDir(vars)
+	local resolved = target
+	if resolved:find("%$%(BUILD_OUT%)") then
+		resolved = resolved:gsub("%$%(BUILD_OUT%)", build_out)
+	end
+	return resolved
 end
 
 return Utils

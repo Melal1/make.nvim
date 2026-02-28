@@ -24,6 +24,19 @@ Example:
 local exes = M.GetExeTables(content)
 ```
 
+## M.GetExecutableTarget(entry)
+Purpose: Return the executable target table for a section entry.
+Inputs:
+- `entry` (table): Section entry (from `AnalyzeAllSections` or `GetExeTables`).
+Returns:
+- `table|nil`: Target table (with `name`, `dependencies`, `recipe`, `kind`) or `nil`.
+Side effects/notes:
+- Uses target matching based on type, not positional ordering.
+Example:
+```lua
+local target = M.GetExecutableTarget(entry)
+```
+
 ## M.GetAllTargetsForDisplay(Content)
 Purpose: Build a list of all targets with display labels.
 Inputs:

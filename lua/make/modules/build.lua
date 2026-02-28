@@ -2,6 +2,7 @@ local M = {}
 
 local Utils = require("make.shared.utils")
 local Parser = require("make.modules.parser")
+local uv = vim.uv or vim.loop
 
 local function normalize_build_mode(mode)
 	if not mode or mode == "" then
@@ -92,6 +93,9 @@ function M.SetBuildMode(MakefilePath, Content, Mode)
 	if not update_makefile_var(lines, "BUILD_MODE", normalized) then
 		insert_makefile_var(lines, "BUILD_MODE", normalized)
 	end
+	if not update_makefile_var(lines, "BUILD_OUT", "$(BUILD_DIR)/$(BUILD_MODE)") then
+		insert_makefile_var(lines, "BUILD_OUT", "$(BUILD_DIR)/$(BUILD_MODE)")
+	end
 
 	local new_content = table.concat(lines, "\n")
 	local ok, err = Utils.WriteFile(MakefilePath, new_content)
@@ -119,7 +123,7 @@ function M.CleanBuild(MakefilePath, Content)
 		return false
 	end
 
-	if not vim.loop.fs_stat(clean_path) then
+	if not uv.fs_stat(clean_path) then
 		local mode = vars.BUILD_MODE or "debug"
 		Utils.Notify("No build output to clean for mode '" .. mode .. "'.", vim.log.levels.INFO)
 		return true

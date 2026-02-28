@@ -3,7 +3,7 @@
 ## run_bear_async(cmd, success_msg, Callback)
 Purpose: Run a Bear command asynchronously and report success/failure.
 Inputs:
-- `cmd` (string): Shell command to execute.
+- `cmd` (string[]): Command argument array to execute.
 - `success_msg` (string|nil): Message to show on success.
 - `Callback` (function|nil): Invoked on success.
 Returns:
@@ -12,31 +12,27 @@ Side effects/notes:
 - Writes errors to `/tmp/Bearerr` on failure.
 Example:
 ```lua
-run_bear_async("cd /p/app && bear --append -- make -B main.o", "Bear finished")
+run_bear_async({ "bear", "--append", "--", "make", "-B", "main.o" }, "Bear finished")
 ```
 
 ## resolve_target_name(target, vars)
 Purpose: Resolve a Makefile target name by substituting build variables.
 Inputs:
-- `target` (string): Target name (may contain `$(BUILD_DIR)`/`$(BUILD_MODE)`).
+- `target` (string): Target name (may contain `$(BUILD_OUT)`).
 - `vars` (table): Parsed Makefile variables.
 Returns:
 - `string`: Resolved target name.
 How it works (step-by-step):
 1) Reads `BUILD_DIR` and `BUILD_MODE` from `vars` (defaults to `build` and `debug`).
 2) Computes `build_out` via `Utils.GetBuildOutputDir`, which appends the mode if needed.
-3) If the target contains `$(BUILD_MODE)`, it:
-   - Replaces `$(BUILD_DIR)/$(BUILD_MODE)` with `build_out`.
-   - Replaces any remaining `$(BUILD_MODE)` with the mode.
-   - Replaces any remaining `$(BUILD_DIR)` with the base directory.
-4) If the target does not contain `$(BUILD_MODE)`, it only replaces `$(BUILD_DIR)`.
+3) Replaces `$(BUILD_OUT)` with `build_out`.
 5) Trims surrounding whitespace and returns the final string.
 Edge cases:
 - If `BUILD_MODE` is empty, the `build_out` resolves to just `BUILD_DIR`.
 - If the target does not include either placeholder, it is returned unchanged (aside from trimming).
 Example:
 ```lua
-local t = resolve_target_name("$(BUILD_DIR)/$(BUILD_MODE)/main.o", vars)
+local t = resolve_target_name("$(BUILD_OUT)/main.o", vars)
 ```
 
 ## M.CurrentFile(Content, Rootdir, RelativePath, Callback)
@@ -54,7 +50,7 @@ Detailed explanation:
 - Parse Makefile variables to resolve build paths.
 - Determine the relative path to the current file (if not provided).
 - Analyze all sections and find the one matching the file path.
-- Locate its object target and resolve placeholders like `$(BUILD_DIR)`.
+- Locate its object target and resolve `$(BUILD_OUT)`.
 - Run `bear --append -- make -B <target>` in the project root.
 Example:
 ```lua
@@ -70,11 +66,11 @@ Inputs:
 Returns:
 - `boolean`: `true` if a Bear command was launched.
 Side effects/notes:
-- Looks for object targets using `$(BUILD_DIR)` placeholders.
+- Looks for object targets using `$(BUILD_OUT)` placeholders.
 How it works (step-by-step):
 1) Scans each line for a target name (`^([^:]+):`).
-2) Checks for object targets that start with `$(BUILD_DIR)` and end with `.o`.
-3) Resolves the target by replacing `$(BUILD_DIR)/$(BUILD_MODE)` or `$(BUILD_DIR)` with `BuildDir`.
+2) Checks for object targets that start with `$(BUILD_OUT)` and end with `.o`.
+3) Resolves the target by replacing `$(BUILD_OUT)` with `BuildDir`.
 4) Runs `bear --append -- make -B <resolved_target>` from `Rootdir`.
 5) Returns `true` after launching the first matching Bear command.
 Edge cases:

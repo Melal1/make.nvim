@@ -81,7 +81,7 @@ Inputs:
 Returns:
 - `boolean`: `true` on success, `false` on failure.
 Side effects/notes:
-- Updates `CXXFLAGS`, `BUILD_DIR`, and `BUILD_MODE`.
+- Updates `CXXFLAGS`, `BUILD_DIR`, `BUILD_MODE`, and `BUILD_OUT`.
 - Normalizes `BUILD_DIR` by removing trailing `/debug` or `/release`.
 - Writes the updated content back to disk.
 Detailed explanation:

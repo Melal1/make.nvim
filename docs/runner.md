@@ -9,16 +9,14 @@ Inputs:
 Returns:
 - `boolean`: `true` if the build command was launched, `false` on error.
 Side effects/notes:
-- Resolves the actual build target using `BUILD_DIR` and `BUILD_MODE`.
+- Resolves the actual build target using `BUILD_OUT`.
 - Runs `make <target>` via `vim.system`.
 - Writes build errors to `/tmp/<bin>.err`.
 How it works (step-by-step):
 1) Finds the executable section that matches `RelativePath`.
-2) Reads Makefile variables and derives `base_dir`, `build_mode`, and `build_out` (`BUILD_DIR/BUILD_MODE`).
+2) Reads Makefile variables and derives `build_out` (from `BUILD_OUT` when concrete, otherwise `BUILD_DIR/BUILD_MODE`).
 3) Resolves the target name:
-   - If the target contains `$(BUILD_MODE)`, it replaces `$(BUILD_DIR)/$(BUILD_MODE)` with `build_out`,
-     then replaces any remaining `$(BUILD_MODE)` and `$(BUILD_DIR)` placeholders.
-   - Otherwise, it only replaces `$(BUILD_DIR)` with `base_dir`.
+   - If the target contains `$(BUILD_OUT)`, it replaces it with `build_out`.
 4) Strips a leading `./` from the resolved target for a clean `make` argument.
 5) Runs `make <resolved_target>` in the Makefile directory and reports success/error.
 Edge cases:
@@ -31,7 +29,7 @@ M.BuildTarget("/p/app/Makefile", "./src/main.cpp", content)
 ```
 
 ## M.RunTargetInSpilt(MakefilePath, RelativePath, Content)
-Purpose: Run the `run<name>` Makefile target in a terminal split.
+Purpose: Run the `run_<name>` Makefile target in a terminal split.
 Inputs:
 - `MakefilePath` (string): Path to Makefile.
 - `RelativePath` (string): `./`-relative path for the file.

@@ -5,6 +5,7 @@
 ---@field CXXFLAGS string        -- General C++ compiler flags (can refer to DEBUGFLAGS or RELEASEFLAGS)
 ---@field BUILD_MODE string      -- Build mode (debug/release)
 ---@field BUILD_DIR string       -- Base build directory name (e.g. build, out, bin)
+---@field BUILD_OUT string       -- Combined build output dir (e.g. $(BUILD_DIR)/$(BUILD_MODE))
 ---@field CC? string             -- (Optional) The C compiler command (e.g. "gcc" or "clang")
 ---@field CFLAGS? string         -- (Optional) C compiler flags
 ---@alias MakeCacheFormat "mpack"|"luabytecode"
@@ -48,6 +49,7 @@ Config.DefaultConfig = {
 		CXXFLAGS = "$(DEBUGFLAGS)",
 		BUILD_MODE = "debug",
 		BUILD_DIR = "build",
+		BUILD_OUT = "$(BUILD_DIR)/$(BUILD_MODE)",
 	},
 }
 

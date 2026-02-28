@@ -20,6 +20,7 @@ Keys:
   - `CXXFLAGS`, `CFLAGS` (string): Active compile flags.
   - `BUILD_MODE` (string): Current build mode.
   - `BUILD_DIR` (string): Base build output directory.
+  - `BUILD_OUT` (string): Combined build output directory (e.g. `$(BUILD_DIR)/$(BUILD_MODE)`).
 
 Example:
 ```lua
@@ -33,6 +34,7 @@ require("make").setup({
     CXXFLAGS = "$(DEBUGFLAGS)",
     BUILD_MODE = "debug",
     BUILD_DIR = "build",
+    BUILD_OUT = "$(BUILD_DIR)/$(BUILD_MODE)",
   },
 })
 ```

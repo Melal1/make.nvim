@@ -14,7 +14,7 @@ Returns:
 Side effects/notes:
 - Prompts for target type (object vs executable).
 - Writes new target lines to the Makefile.
-- For executable targets, prompts for dependencies and link flags.
+- For executable targets, prompts for a target name, dependencies, and link flags.
 - For object targets, can trigger Bear to update compile_commands.
 Detailed explanation:
 - Validate file extension unless `BypassCheck` is true.
@@ -47,9 +47,10 @@ Side effects/notes:
 Detailed explanation:
 - Resolve the target’s relative path and locate its existing entry (or build entries on demand).
 - Gather existing deps and links to preselect in pickers.
-- If no object files exist, only the link selector is shown and links are updated in-place.
+- Prompt for an executable name (defaults to the file’s flattened relative path).
+- If no object files exist, reuse existing deps and regenerate the section with the new name/links.
 - Otherwise, pick new dependencies and links, then remove the old marker block.
-- Regenerate the executable block with updated deps/links and write it back.
+- Regenerate the executable block with updated deps/links/name and write it back.
 Example:
 ```lua
 M.EditTarget("/p/app/Makefile", "/p/app/src/main.cpp", "/p/app", content, nil, nil, cfg)
@@ -100,8 +101,8 @@ Inputs:
 Returns:
 - `boolean`: `true` if picker opens, `false` on error.
 Side effects/notes:
-- Currently only searches `*.cpp` files.
-- Selection callback is a stub (no action yet).
+- Searches source files based on configured source extensions (defaults to `.cpp`).
+- Adds selected files by calling `M.AddToMakefile` for each.
 Example:
 ```lua
 M.PickAndAdd("/p/app", content)

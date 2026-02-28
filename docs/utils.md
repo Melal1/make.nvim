@@ -130,7 +130,7 @@ Utils.Notify("Build succeeded", vim.log.levels.INFO, { title = "Make" })
 ```
 
 ## Utils.GetBuildOutputDir(Vars)
-Purpose: Compute the actual build output directory from `BUILD_DIR` and `BUILD_MODE` variables.
+Purpose: Compute the actual build output directory from `BUILD_OUT` (when concrete) or `BUILD_DIR`/`BUILD_MODE`.
 Inputs:
 - `Vars` (table|nil): Parsed Makefile variables.
 Returns:
@@ -138,7 +138,8 @@ Returns:
 Side effects/notes:
 - If `BUILD_DIR` already ends with `/BUILD_MODE`, it is returned as-is.
 Detailed explanation:
-- Read `BUILD_DIR` (default `build`) and `BUILD_MODE` (default empty).
+- If `BUILD_OUT` is set to a concrete path (no `$(...)`), return it.
+- Otherwise read `BUILD_DIR` (default `build`) and `BUILD_MODE` (default empty).
 - If a mode is set and `BUILD_DIR` already ends with that mode, return it unchanged.
 - Otherwise, append `/<mode>` to `BUILD_DIR`.
 Example:

@@ -41,9 +41,10 @@ function M.FindSectionByPath(sections, relative_path)
 end
 
 function M.TargetTypeLabel(target_name)
-	if target_name:match("%.o$") then
+	local kind = Parser.TargetKind(target_name, nil, { allow_run_prefix = true, allow_run_prefix_any = true, allow_fallback_exe = true })
+	if kind == "obj" then
 		return "(obj)"
-	elseif target_name:match("^run") then
+	elseif kind == "run" then
 		return "(run)"
 	end
 	return "(exe)"

@@ -3,11 +3,15 @@ local Utils = require("make.shared.utils")
 
 ---@class Bear
 local M = {}
----@param cmd string commands to run
+local function is_object_target_name(name)
+	return name and name:match("^%$%(BUILD_OUT%).+%.o$")
+end
+---@param args string[] commands to run
+---@param cwd string|nil
 ---@param success_msg? string text to show when success
 ---@param Callback function|nil
-local function run_bear_async(cmd, success_msg, Callback)
-	vim.system({ "sh", "-c", cmd }, { text = true }, function(obj)
+local function run_bear_async(args, cwd, success_msg, Callback)
+	vim.system(args, { text = true, cwd = cwd }, function(obj)
 		vim.defer_fn(function()
 			vim.schedule(function()
 				if obj.code == 0 then
@@ -40,18 +44,11 @@ local function run_bear_async(cmd, success_msg, Callback)
 end
 
 local function resolve_target_name(target, vars)
-	local base_dir = vars.BUILD_DIR or "build"
-	local build_mode = vars.BUILD_MODE or "debug"
-	local build_out = Utils.GetBuildOutputDir(vars)
-	local resolved = target
-	if resolved:find("%$%(BUILD_MODE%)") then
-		resolved = resolved:gsub("%$%(BUILD_DIR%)/%$%(BUILD_MODE%)", build_out)
-		resolved = resolved:gsub("%$%(BUILD_MODE%)", build_mode)
-		resolved = resolved:gsub("%$%(BUILD_DIR%)", base_dir)
-	else
-		resolved = resolved:gsub("%$%(BUILD_DIR%)", base_dir)
+	local resolved = Utils.ResolveTargetName(target, vars)
+	if not resolved then
+		return resolved
 	end
-	return resolved:match("^%s*(.-)%s*$")
+	return vim.trim(resolved)
 end
 
 ---Run bear for the current file
@@ -73,15 +70,10 @@ function M.CurrentFile(Content, Rootdir, RelativePath, Callback)
 	for _, Ent in ipairs(Targets) do
 		if (Ent.analysis.type == "full" or Ent.analysis.type == "obj") and Ent.path == RelativePath then
 			for _, Target in ipairs(Ent.analysis.targets) do
-				if Target.name:match("^%$%(BUILD_DIR%).+%.o$") then
+				if is_object_target_name(Target.name) then
 					local ModifiedName = resolve_target_name(Target.name, Vars)
-					local cmd = string.format(
-						"cd %s && bear --append -- make -B %s",
-						vim.fn.shellescape(Rootdir),
-						vim.fn.shellescape(ModifiedName)
-					)
-
-					run_bear_async(cmd, "Bear finished", Callback)
+					local args = { "bear", "--append", "--", "make", "-B", ModifiedName }
+					run_bear_async(args, Rootdir, "Bear finished", Callback)
 
 					return true
 				end
@@ -101,18 +93,12 @@ function M.Target(Lines, Rootdir, BuildDir)
 	for _, Line in ipairs(Lines) do
 		-- Match object file targets
 		local targetName = Line:match("^([^:]+):")
-		if targetName and targetName:match("^%$%(BUILD_DIR%).+%.o$") then
+		if targetName and is_object_target_name(targetName) then
 			local ModifiedName = targetName
-				:gsub("%$%(BUILD_DIR%)/%$%(BUILD_MODE%)", BuildDir)
-				:gsub("%$%(BUILD_DIR%)", BuildDir)
+				:gsub("%$%(BUILD_OUT%)", BuildDir)
 				:match("^%s*(.-)%s*$")
-			local cmd = string.format(
-				"cd %s && bear --append -- make -B %s",
-				vim.fn.shellescape(Rootdir),
-				vim.fn.shellescape(ModifiedName)
-			)
-
-			run_bear_async(cmd, "Bear finished")
+			local args = { "bear", "--append", "--", "make", "-B", ModifiedName }
+			run_bear_async(args, Rootdir, "Bear finished")
 
 			return true
 		end
@@ -150,19 +136,16 @@ function M.SelectTarget(Content, Rootdir)
 		local BearTargets = {}
 		for _, LineNum in ipairs(selected) do
 			for _, Target in ipairs(map[LineNum].analysis.targets) do
-				if Target.name:match("^%$%(BUILD_DIR%).+%.o$") then
+				if is_object_target_name(Target.name) then
 					table.insert(BearTargets, resolve_target_name(Target.name, Vars))
 					break
 				end
 			end
 		end
 
-		local cmd = string.format(
-			"cd %s && bear --append -- make -B %s",
-			vim.fn.shellescape(Rootdir),
-			table.concat(BearTargets, " ")
-		)
-		run_bear_async(cmd, "Bear finished")
+		local args = { "bear", "--append", "--", "make", "-B" }
+		vim.list_extend(args, BearTargets)
+		run_bear_async(args, Rootdir, "Bear finished")
 	end, { prompt_title = "Select targets for Bear", previewer = Picker.text_per_entry_previewer("make") })
 	return true
 end

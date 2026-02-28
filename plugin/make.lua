@@ -11,6 +11,7 @@ local subcommands = {
 	"build",
 	"tasks",
 	"edit_all",
+	"pick-add",
 	"remove",
 	"analysis",
 	"bear",

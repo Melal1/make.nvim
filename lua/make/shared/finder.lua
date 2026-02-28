@@ -4,6 +4,43 @@
 ---@field Level integer         # How many levels up the search went
 
 local Finder = {}
+local Utils = require("make.shared.utils")
+local uv = vim.uv or vim.loop
+local header_index_cache = {}
+
+local function normalize_root(root_path)
+	local normalized = vim.fn.fnamemodify(root_path or "", ":p")
+	if normalized:sub(-1) == "/" then
+		normalized = normalized:sub(1, -2)
+	end
+	return normalized
+end
+
+local function build_header_index(root_path)
+	local index = {}
+	if not root_path or root_path == "" then
+		return index
+	end
+
+	local headers = vim.fs.find(function(name)
+		return name:sub(-2) == ".h"
+	end, { path = root_path, type = "file", limit = math.huge })
+
+	for _, header_path in ipairs(headers) do
+		local base = vim.fn.fnamemodify(header_path, ":t:r")
+		if not index[base] then
+			local header_dir = vim.fn.fnamemodify(header_path, ":h")
+			local relative_dir, ok = Utils.GetRelativePath(header_dir, root_path)
+			if ok then
+				index[base] = relative_dir
+			else
+				index[base] = header_dir
+			end
+		end
+	end
+
+	return index
+end
 
 ---Finds the root directory of a project by searching upward from a starting point
 ---for known root markers (e.g. `.git`, `Makefile`).
@@ -30,7 +67,7 @@ function Finder.FindRoot(StartingPoint, MaxSearchLevels, RootMarkers)
 	for i = 1, MaxSearchLevels do
 		for _, Marker in ipairs(RootMarkers) do
 			local MarkerPath = CurrentPath .. "/" .. Marker
-			local Stat = vim.loop.fs_stat(MarkerPath)
+			local Stat = uv.fs_stat(MarkerPath)
 			if Stat then
 				return {
 					Path = CurrentPath,
@@ -50,6 +87,32 @@ function Finder.FindRoot(StartingPoint, MaxSearchLevels, RootMarkers)
 	return nil, "No project root found within " .. MaxSearchLevels .. " levels"
 end
 
+---Build or fetch a cached header index for the project root.
+---@param RootPath string
+---@return table<string, string>
+function Finder.BuildHeaderIndex(RootPath)
+	local root = normalize_root(RootPath)
+	if root == "" then
+		return {}
+	end
+	if header_index_cache[root] then
+		return header_index_cache[root]
+	end
+	local index = build_header_index(root)
+	header_index_cache[root] = index
+	return index
+end
+
+---Clear cached header index (all roots or a specific root).
+---@param RootPath? string
+function Finder.ClearHeaderIndex(RootPath)
+	if not RootPath then
+		header_index_cache = {}
+		return
+	end
+	header_index_cache[normalize_root(RootPath)] = nil
+end
+
 ---Finds the directory containing a header file with the given basename, relative to the project root.
 ---For example, if `Basename` is `"utils"`, it will search for `"utils.h"`.
 ---
@@ -57,29 +120,11 @@ end
 ---@param RootPath string # Root directory to start the search
 ---@return string|nil     # Relative or absolute path to the header's directory, or nil if not found
 function Finder.FindHeaderDirectory(Basename, RootPath)
-	local HeaderName = Basename .. ".h"
-
-	local Utils = require("make.shared.utils")
-	local SearchCmd = "find "
-		.. vim.fn.shellescape(RootPath)
-		.. " -name "
-		.. vim.fn.shellescape(HeaderName)
-		.. " -type f"
-	local FindResult = vim.fn.system(SearchCmd)
-
-	if vim.v.shell_error ~= 0 or FindResult == "" then
+	if not Basename or Basename == "" or not RootPath or RootPath == "" then
 		return nil
 	end
-
-	local HeaderPath = vim.trim(vim.split(FindResult, "\n")[1])
-	local HeaderDir = vim.fn.fnamemodify(HeaderPath, ":h")
-
-	local RelativeHeaderDir, _ = Utils.GetRelativePath(HeaderDir, RootPath)
-	if RelativeHeaderDir then
-		return RelativeHeaderDir
-	end
-
-	return HeaderDir
+	local index = Finder.BuildHeaderIndex(RootPath)
+	return index[Basename]
 end
 
 return Finder
