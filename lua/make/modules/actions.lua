@@ -59,9 +59,7 @@ function M.AddToMakefile(MakefilePath, FilePath, RootPath, Content, BypassCheck,
 
 	local Basename = vim.fn.fnamemodify(FilePath, ":t:r")
 
-	local TargetType = vim.fn.input(
-		"Target type for " .. RelativePath .. " - [o]bject file or [e]xecutable? [o/e]:\n"
-	)
+	local TargetType = vim.fn.input("Target type for " .. RelativePath .. " - [o]bject file or [e]xecutable? [o/e]:\n")
 	if TargetType ~= "o" and TargetType ~= "e" then
 		Utils.Notify("\nInvalid choice. Must be 'o ( Object )' or 'e ( Executable )'.", vim.log.levels.WARN)
 		return false
@@ -74,7 +72,7 @@ function M.AddToMakefile(MakefilePath, FilePath, RootPath, Content, BypassCheck,
 			return false
 		end
 
-		local Lines = Generator.ObjectTarget(Basename, RelativePath, Config.MakefileVars)
+			local Lines = Generator.ObjectTarget(RelativePath, Config.MakefileVars)
 		local AppendSuccess, WriteErr = Utils.AppendToFile(MakefilePath, Lines)
 		if not AppendSuccess then
 			Utils.Notify("\nFailed to write to Makefile: " .. WriteErr, vim.log.levels.ERROR)
@@ -99,15 +97,14 @@ function M.AddToMakefile(MakefilePath, FilePath, RootPath, Content, BypassCheck,
 
 	local function finalize_executable(selected_deps)
 		local ok = Links.SelectLinks({}, Content, function(selected_links)
-			local Lines, status = Generator.ExecutableTarget(
-				Basename,
-				RelativePath,
-				selected_deps,
-				Config.MakefileVars,
-				RootPath,
-				selected_links,
-				target_name
-			)
+				local Lines, status = Generator.ExecutableTarget(
+					RelativePath,
+					selected_deps,
+					Config.MakefileVars,
+					RootPath,
+					selected_links,
+					target_name
+				)
 			if not status then
 				Utils.Notify(
 					"\nFailed to generate executable target. Missing include paths for: " .. table.concat(Lines, ", "),
@@ -215,15 +212,14 @@ function M.EditTarget(MakefilePath, FilePath, RootPath, Content, Entries, callba
 		end
 
 		local updated_content = table.concat(NewLines, "\n")
-		local GenLines, status = Generator.ExecutableTarget(
-			Basename,
-			RelativePath,
-			selected_deps,
-			Config.MakefileVars,
-			RootPath,
-			selected_links,
-			target_name
-		)
+			local GenLines, status = Generator.ExecutableTarget(
+				RelativePath,
+				selected_deps,
+				Config.MakefileVars,
+				RootPath,
+				selected_links,
+				target_name
+			)
 		if not status then
 			Utils.Notify(
 				"Failed to regenerate target. Missing include paths for: " .. table.concat(GenLines, ", "),
@@ -315,7 +311,10 @@ function M.EditTarget(MakefilePath, FilePath, RootPath, Content, Entries, callba
 				end
 				return
 			end
-			Utils.Notify("Edited target: " .. target_name .. " with " .. #selected_deps .. " dependencies", vim.log.levels.INFO)
+			Utils.Notify(
+				"Edited target: " .. target_name .. " with " .. #selected_deps .. " dependencies",
+				vim.log.levels.INFO
+			)
 			if callback then
 				callback(true)
 			end
@@ -376,18 +375,20 @@ function M.Remove(MakefilePath, Content)
 
 	local map = {}
 	local PickerEntries = {}
-	local lines = vim.split(Content or "", "\n", { plain = true, trimempty = false })
-
 	local picker = Helpers.GetPickerOrWarn("Picker is required for editing targets")
 	if not picker then
 		return false
 	end
 
 	for _, Entry in ipairs(Entries) do
+		local preview = Parser.ReadContentBetweenLines(Content or "", Entry.startLine, Entry.endLine, true)
+		if type(preview) == "table" then
+			preview = table.concat(preview, "")
+		end
 		table.insert(PickerEntries, {
 			value = Entry.startLine,
 			display = Entry.baseName .. " ( " .. Entry.analysis.type .. " )",
-			preview_text = Parser.ReadContentBetweenLines(lines, Entry.startLine, Entry.endLine, true),
+			preview_text = preview,
 		})
 		map[Entry.startLine] = Entry
 	end
@@ -470,16 +471,16 @@ function M.PickAndAdd(RootPath, Content, Config)
 		existing_content, _ = Utils.ReadFile(makefile_path)
 	end
 
-	local entries = {}
-	for _, file in ipairs(results) do
-		local rel, ok = Utils.GetRelativePath(file, RootPath)
-		if ok and existing_content and Parser.TargetExists(existing_content, rel) then
-			goto continue
+		local entries = {}
+		for _, file in ipairs(results) do
+			local rel, rel_ok = Utils.GetRelativePath(file, RootPath)
+			if rel_ok and existing_content and Parser.TargetExists(existing_content, rel) then
+				goto continue
+			end
+			local display = rel_ok and rel or file
+			table.insert(entries, { value = file, display = display })
+			::continue::
 		end
-		local display = ok and rel or file
-		table.insert(entries, { value = file, display = display })
-		::continue::
-	end
 
 	if #entries == 0 then
 		Utils.Notify("No new source files found to add", vim.log.levels.WARN)
@@ -495,12 +496,11 @@ function M.PickAndAdd(RootPath, Content, Config)
 
 		local selected_display = {}
 		for _, file in ipairs(selected) do
-			local rel, ok = Utils.GetRelativePath(file, RootPath)
-			table.insert(selected_display, ok and rel or file)
+			local rel, rel_ok = Utils.GetRelativePath(file, RootPath)
+			table.insert(selected_display, rel_ok and rel or file)
 		end
 		Utils.Notify("Selected: " .. table.concat(selected_display, ", "), vim.log.levels.INFO)
 
-		local makefile_path = RootPath .. "/Makefile"
 		local makefile_content = Content
 		if not makefile_content then
 			makefile_content, _ = Utils.ReadFile(makefile_path)
@@ -513,11 +513,11 @@ function M.PickAndAdd(RootPath, Content, Config)
 		makefile_content = Utils.ReadFile(makefile_path) or makefile_content or ""
 
 		for _, file in ipairs(selected) do
-			local rel, ok = Utils.GetRelativePath(file, RootPath)
-			local label = ok and rel or file
+			local rel, rel_ok = Utils.GetRelativePath(file, RootPath)
+			local label = rel_ok and rel or file
 			Utils.Notify("Adding target for: " .. label, vim.log.levels.INFO)
-			local ok = M.AddToMakefile(makefile_path, file, RootPath, makefile_content, false, Config)
-			if ok then
+			local added = M.AddToMakefile(makefile_path, file, RootPath, makefile_content, false, Config)
+			if added then
 				makefile_content = Utils.ReadFile(makefile_path) or makefile_content
 			end
 		end

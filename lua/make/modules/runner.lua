@@ -58,6 +58,10 @@ function M.BuildTarget(MakefilePath, RelativePath, Content)
 	local MakefileVars = Parser.ParseVariables(Content)
 	local target_name = exe_target.name
 	local resolved = Utils.ResolveTargetName(target_name, MakefileVars)
+	if not resolved or resolved == "" then
+		Utils.Notify("Resolved target name is empty", vim.log.levels.WARN)
+		return false
+	end
 	resolved = resolved:gsub("^%./", "")
 
 	vim.system({ "make", resolved }, { text = true, cwd = dir }, function(obj)
@@ -217,8 +221,15 @@ function M.PickAndRunTargets(makefile_content)
 		for _, label in ipairs(selected_labels) do
 			local target_name = name_by_label[label]
 			if target_name then
-				table.insert(selected_targets, Utils.ResolveTargetName(target_name, vars))
+				local resolved_name = Utils.ResolveTargetName(target_name, vars)
+				if resolved_name and resolved_name ~= "" then
+					table.insert(selected_targets, resolved_name)
+				end
 			end
+		end
+		if #selected_targets == 0 then
+			Utils.Notify("No valid targets selected", vim.log.levels.WARN)
+			return
 		end
 
 		local makefile_dir = vim.fn.getcwd()
@@ -226,8 +237,30 @@ function M.PickAndRunTargets(makefile_content)
 		vim.list_extend(args, selected_targets)
 		local buf = vim.api.nvim_create_buf(false, true)
 		vim.api.nvim_set_current_buf(buf)
-		vim.fn.termopen(args, { cwd = makefile_dir })
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
+			"Running: " .. table.concat(args, " "),
+		})
 		Utils.Notify("Running targets: " .. table.concat(selected_targets, ", "), vim.log.levels.INFO)
+		vim.system(args, { text = true, cwd = makefile_dir }, function(obj)
+			vim.schedule(function()
+				local lines = {}
+				local stdout = obj.stdout or ""
+				local stderr = obj.stderr or ""
+				if stdout ~= "" then
+					vim.list_extend(lines, vim.split(stdout, "\n", { plain = true }))
+				end
+				if stderr ~= "" then
+					if #lines > 0 then
+						table.insert(lines, "")
+					end
+					vim.list_extend(lines, vim.split(stderr, "\n", { plain = true }))
+				end
+				if #lines == 0 then
+					lines = { "(no output)" }
+				end
+				vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+			end)
+		end)
 	end, {
 		prompt_title = "Select Makefile target(s)",
 	})
@@ -264,10 +297,8 @@ function M.FastRun(Config, on_run)
 		return false
 	end
 
-	local basename = vim.fn.fnamemodify(file_path, ":t:r")
 	local ok = Links.SelectLinks({}, makefile_content, function(selected_links)
 		local lines = Generator.ExecutableTarget(
-			basename,
 			relative_path,
 			{},
 			Config.MakefileVars,

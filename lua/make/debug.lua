@@ -33,7 +33,7 @@ local function find_executables(file_path, config)
 	Parser.SetCacheRoot(root.Path, makefile_path)
 
 	local content = Utils.ReadFile(makefile_path) or ""
-	local vars = Parser.ParseVariables(content, { root_path = root.Path, makefile_path = makefile_path })
+	local vars = Parser.ParseVariables(content)
 	if config and config.MakefileVars then
 		vars = vim.tbl_deep_extend("force", config.MakefileVars, vars)
 	end

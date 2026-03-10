@@ -27,11 +27,10 @@ function Generator.GenerateMakefileVariables(MakefileVars)
 end
 
 ---Generate an object target rule for a single source file.
----@param Basename string           Basename without extension
 ---@param RelativePath string       Relative path to the source file
 ---@param MakefileVars MakefileVars Makefile variables table
 ---@return string[]
-function Generator.ObjectTarget(Basename, RelativePath, MakefileVars)
+function Generator.ObjectTarget(RelativePath, MakefileVars)
 	local flat_name = Utils.FlattenRelativePath(RelativePath)
 	local ObjName = "$(BUILD_OUT)/" .. flat_name .. ".o"
 	local CompilerVar = MakefileVars.CC and "$(CC)" or "$(CXX)"
@@ -47,7 +46,6 @@ function Generator.ObjectTarget(Basename, RelativePath, MakefileVars)
 end
 
 ---Generate full compilation & linking rule for an executable target.
----@param Basename string                 Basename of the source file
 ---@param RelativePath string             Relative path to the source file
 ---@param Dependencies string[]|nil       Optional list of header dependencies
 ---@param MakefileVars MakefileVars       Makefile variables table
@@ -56,11 +54,11 @@ end
 ---@param TargetName string|nil           Optional executable name override (no path separators)
 ---@return string[] lines_or_missing
 ---@return boolean success                Whether generation succeeded
-function Generator.ExecutableTarget(Basename, RelativePath, Dependencies, MakefileVars, RootPath, Links, TargetName)
+function Generator.ExecutableTarget(RelativePath, Dependencies, MakefileVars, RootPath, Links, TargetName)
 	Dependencies = Dependencies or {}
 	Links = Links or {}
 	local flat_name = Utils.FlattenRelativePath(RelativePath)
-	local target_key = Utils.SanitizeTargetName(TargetName)
+	local target_key = Utils.SanitizeTargetName(TargetName or "")
 	if target_key == "" then
 		target_key = flat_name
 	end

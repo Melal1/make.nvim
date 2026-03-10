@@ -162,7 +162,7 @@ end
 ---@return string
 function Utils.NormalizeRelativePath(path)
 	path = path or ""
-	return path:gsub("^%./", "")
+	return (path:gsub("^%./", ""))
 end
 
 ---Return a relative path without its extension, without a leading "./".
@@ -184,7 +184,7 @@ function Utils.FlattenRelativePath(path)
 	if rel_no_ext == "" then
 		return rel_no_ext
 	end
-	return rel_no_ext:gsub("[/\\\\]", "__")
+	return (rel_no_ext:gsub("[/\\\\]", "__"))
 end
 
 ---Sanitize a target name by removing whitespace and path separators.
